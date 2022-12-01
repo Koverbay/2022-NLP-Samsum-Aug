@@ -15,8 +15,6 @@ def main(args):
 
     # Load dataset, spacy model, and the entity lists.
     samsum = load_dataset('samsum', split=args.split)
-    # nlp = spacy.load("en_core_web_lg")
-    # nlp.add_pipe('merge_entities')
     with open (args.entities, 'r') as f:
         global entities
         entities = json.load(f) 
@@ -28,7 +26,7 @@ def main(args):
     samsum_swapped = samsum.map(replace_entity)
 
     # Save the new dataset object.
-    samsum_swapped.save_to_disk('samsum-entity-swap')
+    samsum_swapped.save_to_disk(args.savepath)
 
 def replace_entity(item):
     text = item['summary']
