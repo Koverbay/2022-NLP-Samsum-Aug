@@ -49,8 +49,6 @@ eval_dataloader = DataLoader(
 )
 
 
-
-
 tokenizer = AutoTokenizer.from_pretrained("henryu-lin/t5-large-samsum-deepspeed")
 model = AutoModelForSeq2SeqLM.from_pretrained("henryu-lin/t5-large-samsum-deepspeed")
 optimizer = AdamW(model.parameters(), lr=2e-5)
