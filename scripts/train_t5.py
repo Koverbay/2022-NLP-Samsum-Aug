@@ -1,17 +1,15 @@
-# script to train samsum on t5-large model
-import torch
+# script to fine tune t5-large model on augmented samsum
+
+import torch, os
 import datasets
 from transformers import T5Tokenizer, T5Model
 from transformers import DataCollatorForSeq2Seq, get_scheduler
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from accelerate import Accelerator
+from tqdm.auto import tqdm
 
-
-data = datasets.load_from_disk("../data/samsum-entity-swap")
-
-max_doc_len = 512
-max_sum_len = 128
 
 def data_tokenization(samples):
     model_inputs = tokenizer(samples['dialogue'], max_length=max_doc_len, truncation=True)
@@ -22,31 +20,40 @@ def data_tokenization(samples):
     model_inputs['labels'] = labels['input_ids']
     return model_inputs
 
+
+split = "train"
+data = datasets.load_from_disk("../data/samsum-orig-prompt")
+max_doc_len = 512
+max_sum_len = 128
+
 tokenizer = T5Tokenizer.from_pretrained("t5-large")
 model = T5Model.from_pretrained("t5-large")
 
 tokenized_dataset = data.map(data_tokenization, batched=True)
 tokenized_dataset.set_format('torch')
-
-tokenized_dataset = tokenized_dataset.remove_columns(data['train'].column_names)
-
+tokenized_dataset = tokenized_dataset.remove_columns(data_train['id'].column_names)
 data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
-batch_size = 4
+
 train_dataloader = DataLoader(
-    tokenized_dataset['train'],
+    tokenized_dataset,
     shuffle=True,
     collate_fn=data_collator,
-    batch_size=batch_size,
+    batch_size=4,
 )
+
 eval_dataloader = DataLoader(
     tokenized_dataset['validation'],
     collate_fn=data_collator,
-    batch_size=batch_size,
+    batch_size=4,
 )
 
-optimizer = AdamW(model.parameters(), lr=2e-5)
 
+
+
+tokenizer = AutoTokenizer.from_pretrained("henryu-lin/t5-large-samsum-deepspeed")
+model = AutoModelForSeq2SeqLM.from_pretrained("henryu-lin/t5-large-samsum-deepspeed")
+optimizer = AdamW(model.parameters(), lr=2e-5)
 accelerator = Accelerator()
 model, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(model, optimizer, train_dataloader, eval_dataloader)
 
@@ -62,20 +69,8 @@ lr_scheduler = get_scheduler(
     num_training_steps=training_steps,
 )
 
-def postprocess_text(preds, labels):
-    preds = [pred.strip() for pred in preds]
-    labels = [label.strip() for label in labels]
-    
-    preds = ['\n'.join(nltk.sent_tokenize(pred)) for pred in preds]
-    labels = ['\n'.join(nltk.sent_tokenize(label)) for label in labels]
-    
-    return preds, labels
 
-print("training loop")
-
-from tqdm.auto import tqdm
-out_dir = './t5-samsum'
-
+out_dir = './t5-samsum_tuned'
 
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
@@ -117,7 +112,7 @@ for epoch in range(epochs):
             if isinstance(generated_tokens, tuple):
                 generated_tokens = generated_tokens[0]
 
-            decoded_preds = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+            decoded_preds = tokenizer.pip(generated_tokens, skip_special_tokens=True)
             decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
             decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
 
